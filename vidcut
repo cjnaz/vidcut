@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Video file slicer.
+
+One or more --keep's specify segments of the input file to retain in the output file.
+The --keep start/end times (in Sec or H:M:S) are relative to the start of the input file.
+EG:
+    --keep 10 90 --keep 5:20 5:40
+    retains 80s between 10s and 90s, and then 20s between 5min 20s to 5min 40s.
+
+An end time of 0 specifies to keep to the end of the input file.  Otherwise, the
+end time must be greater than the start time.  Keep segments may be in any time order and
+may be overlapping, although the results may not be useful.
+
+By default, the input file is renamed with '-save' and the output is written in its place.
+If --out is specified the input file is left in-place.
+The input file is simply replaced if --no-save is specified and --out is not specified.
+
+Note: Intermediate files are saved in the CWD, and normally cleaned up (unless --no-cleanup).
+"""
+
+__version__ = "v0.0 200801"
+
+
+#==========================================================
+#
+#  Chris Nelson, July 2020
+#
+# 200801 v0.0  New
+#
+# Changes pending
+#   
+#==========================================================
+
+import argparse
+import sys
+import os.path
+import subprocess
+import io
+
+# Configs / Constants
+FFMPEG = "ffmpeg"               # Change to full path to alternate version, if desired.
+FILESLIST = "partfiles.txt"
+
+
+def main():
+
+    # Do the slicing
+    infilename, inext = os.path.splitext(args.Infile)
+
+    if args.verbose:
+        cmd = [FFMPEG, "-y", "-i", args.Infile]
+    else:
+        cmd = [FFMPEG, "-hide_banner", "-loglevel", "warning", "-y", "-i", args.Infile]
+
+    with io.open(FILESLIST, "wt", encoding='utf8') as ofile:
+        ofile.write("# Extracted segments\n")
+
+    num_keep_segments = len(args.keep)
+    for segment in range(num_keep_segments):
+        start_time = tosec(args.keep[segment][0])
+        end_time =   tosec(args.keep[segment][1])
+        if end_time == 0:
+            end_time = 40*60*60         # Set to 40 hours max
+        duration = end_time - start_time
+        if duration <= 0:
+            print (f"Error:  End time must be later than Start time (--keep {args.keep[segment][0]} {args.keep[segment][1]})")
+            sys.exit(1)
+
+        cmd.extend(["-ss", f"{start_time}", "-t", f"{duration}", "-c", "copy", f"part{segment}{inext}" ])
+
+        with io.open(FILESLIST, "at", encoding='utf8') as ofile:
+            ofile.write(f"file part{segment}{inext}\n")
+
+    if args.verbose:
+        print (f"\n***** Slicing the {num_keep_segments} --keep segments... *****")
+        print (cmd)
+    subprocess.run(cmd)
+
+
+    # Construct the output file and clean up
+    if not args.no_save and args.out is None:       # Output will overwrite infile, so save infile.
+        infile_rename = infilename + "-save" + inext
+        if args.verbose:
+            print (f"\n***** Moving  <{args.Infile}>  to  <{infile_rename}>. *****")
+        os.replace(args.Infile, infile_rename)
+
+    if args.out is not None:
+        _outfilename,_outext = os.path.splitext(args.out)
+        outfile = _outfilename + inext
+    else:
+        outfile = args.Infile
+
+    if num_keep_segments == 1:
+        partfile = "part0" + inext
+        if args.verbose:
+            print (f"\n***** Moving  <{partfile}>  to  <{outfile}>. *****")
+        os.replace(partfile, outfile)
+    else:
+        cmd = [FFMPEG, "-y", "-f", "concat", "-i", FILESLIST, "-c", "copy", f"{outfile}"]
+        if args.verbose:
+            print ("\n***** Concatenating the parts... *****")
+            print (cmd)
+        subprocess.run(cmd)
+
+        if not args.no_cleanup:
+            for segment in range(num_keep_segments):
+                os.remove(f"part{segment}{inext}")
+    if not args.no_cleanup:
+        os.remove(FILESLIST)
+
+
+def tosec(hms):
+    """Return time in seconds.
+    h and m are optional.
+    """
+    if not hms.replace(':','').isdigit():
+        print (f"Error:  Time values must only contain numbers and colons <{hms}>.")
+        sys.exit(1)
+    _hms = hms.split(':')
+    seconds = 0
+    multiplier = 1
+    for xx in reversed(_hms):
+        seconds += int(xx) * multiplier
+        multiplier *= 60
+    
+    return(seconds)
+    
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument('Infile',
+                        help="The input file.")
+    parser.add_argument('-o', '--out',
+                        help="The output file (the default is to replace Infile).")
+    parser.add_argument('--no-save', action='store_true',
+                        help="Used with --out, delete Infile after processing (the default is to rename Infile with '-save').")
+    parser.add_argument('--no-cleanup', action='store_true',
+                        help="Don't clean up intermediate files for multi-segment usage.")
+    parser.add_argument('-v', '--verbose', action='count',
+                        help="Print status and activity messages.")
+    parser.add_argument('-V', '--version', action='version', version='%(prog)s ' + __version__,
+                        help="Return version number and exit.")
+
+    requiredNamed = parser.add_argument_group("required arguments")
+    requiredNamed.add_argument('-k', '--keep', required=True, metavar='Time', nargs=2, action="append",
+                        help="Keep segment START and END times.  May be specified one or more times.")
+
+    args = parser.parse_args()
+
+    if not os.path.exists(args.Infile):
+        print ("Can't find the input file <{}>".format(args.Infile))
+        sys.exit(1)
+
+    try:
+        if args.out is None:
+            outdir = os.path.split(args.Infile)[0]
+        else:
+            outdir = os.path.split(args.out)[0]
+        testfile = os.path.join(outdir, "test.txt")
+        with io.open(testfile, "wt", encoding='utf8') as ofile:
+            None
+        os.remove(testfile)
+    except:
+        print(f"Error:  Cannot write in the output file directory <{outdir}>.")
+        sys.exit(1)
+
+    main()
