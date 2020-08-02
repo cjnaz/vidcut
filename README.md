@@ -1,11 +1,11 @@
 # vidcut
 
-Cut down a video file to just the desired segments using ffmpeg.  I use this tool to trim the fat from TV recordings using Plex's DVR feature.
+Cut down a video file to just the desired segments using ffmpeg.  I use this tool to trim the fat from TV recordings from Plex's DVR feature.
 
 The primary switch is...
 - `--keep` to specify the Start and End times for segments you wish to _keep_.  Multiple `--keep` segments may be specified.
 
-The default behavior is to replace the input file with the trimmed down version, while the original input file is retained withe `-save` added to its name.
+The default behavior is to replace the input file with the trimmed down version, while the original input file is retained with `-save` added to its name.
 This may be modified with the `--out` and `--no-save` switches.
 
 ## Usage
@@ -30,7 +30,8 @@ By default, the input file is renamed with '-save' and the output is written in 
 If --out is specified the input file is left in-place.
 The input file is simply replaced if --no-save is specified and --out is not specified.
 
-Note: Intermediate files are saved in the CWD, and normally cleaned up (unless --no-cleanup).
+Note: Intermediate files are written in the script directory, as specified by WORKDIR, and
+normally cleaned up (unless --no-cleanup).
 
 positional arguments:
   Infile                The input file.
@@ -49,8 +50,9 @@ required arguments:
 ```
 
 ## Setup and Usage notes
-- Supported on Python3 only.  Developed on Centos 7.8 with Python 3.6.8.
+- Supported on Python3 only.  Developed on Centos 7.8 with Python 3.6.8.  Tested/supported on Windows 10 with Python 3.8.0.
 - Depends on ffmpeg being within the user's path env var.  An alternate ffmpeg executable may be specified via the `FFMPEG` constant in the code.
+- The temporary files working directory WORKDIR may be configured in the script.  The default is the script's directory.
 - Note that ffmpeg _copy_ is used so that the original quality is retained - no transcoding.  
 
 ## Known issues:
@@ -58,4 +60,5 @@ required arguments:
 
 ## Version history
 
+- 200802 v0.1  Added configurable WORKDIR, Supporting Windows
 - 200801 v0.0  New
