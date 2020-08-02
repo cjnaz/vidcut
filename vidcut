@@ -15,16 +15,18 @@ By default, the input file is renamed with '-save' and the output is written in 
 If --out is specified the input file is left in-place.
 The input file is simply replaced if --no-save is specified and --out is not specified.
 
-Note: Intermediate files are saved in the CWD, and normally cleaned up (unless --no-cleanup).
+Note: Intermediate files are written in the script directory, as specified by WORKDIR, and
+normally cleaned up (unless --no-cleanup).
 """
 
-__version__ = "v0.0 200801"
+__version__ = "v0.1 200802"
 
 
 #==========================================================
 #
 #  Chris Nelson, July 2020
 #
+# 200802 v0.1  Added configurable WORKDIR, Supporting Windows
 # 200801 v0.0  New
 #
 # Changes pending
@@ -33,13 +35,21 @@ __version__ = "v0.0 200801"
 
 import argparse
 import sys
-import os.path
+import os
 import subprocess
 import io
+import shutil
 
 # Configs / Constants
-FFMPEG = "ffmpeg"               # Change to full path to alternate version, if desired.
+FFMPEG =    "ffmpeg"               # Change to full path to alternate version, if desired.
 FILESLIST = "partfiles.txt"
+
+# Uncomment one WORKDIR defintion
+WORKDIR =   os.path.dirname(os.path.realpath(__file__))     # The script directory
+# import tempfile
+# WORKDIR =   tempfile.gettempdir()                           # The system tmp folder (eg /tmp)
+# WORKDIR =   "."                                             # The CWD
+# WORKDIR =   "/mnt/share/tmp"                                # A fixed path
 
 
 def main():
@@ -48,11 +58,13 @@ def main():
     infilename, inext = os.path.splitext(args.Infile)
 
     if args.verbose:
+        print (f"\n***** Temporary files written to WORKDIR <{WORKDIR}> *****")
         cmd = [FFMPEG, "-y", "-i", args.Infile]
     else:
         cmd = [FFMPEG, "-hide_banner", "-loglevel", "warning", "-y", "-i", args.Infile]
 
-    with io.open(FILESLIST, "wt", encoding='utf8') as ofile:
+    fileslist = os.path.join(WORKDIR, FILESLIST)
+    with io.open(fileslist, "wt", encoding='utf8') as ofile:
         ofile.write("# Extracted segments\n")
 
     num_keep_segments = len(args.keep)
@@ -66,10 +78,11 @@ def main():
             print (f"Error:  End time must be later than Start time (--keep {args.keep[segment][0]} {args.keep[segment][1]})")
             sys.exit(1)
 
-        cmd.extend(["-ss", f"{start_time}", "-t", f"{duration}", "-c", "copy", f"part{segment}{inext}" ])
+        partfile = os.path.join(WORKDIR, f"part{segment}{inext}")
+        cmd.extend(["-ss", f"{start_time}", "-t", f"{duration}", "-c", "copy", partfile ])
 
-        with io.open(FILESLIST, "at", encoding='utf8') as ofile:
-            ofile.write(f"file part{segment}{inext}\n")
+        with io.open(fileslist, "at", encoding='utf8') as ofile:
+            ofile.write(f"file '{partfile}'\n")
 
     if args.verbose:
         print (f"\n***** Slicing the {num_keep_segments} --keep segments... *****")
@@ -90,13 +103,21 @@ def main():
     else:
         outfile = args.Infile
 
-    if num_keep_segments == 1:
-        partfile = "part0" + inext
-        if args.verbose:
-            print (f"\n***** Moving  <{partfile}>  to  <{outfile}>. *****")
-        os.replace(partfile, outfile)
-    else:
-        cmd = [FFMPEG, "-y", "-f", "concat", "-i", FILESLIST, "-c", "copy", f"{outfile}"]
+    if num_keep_segments == 1:      # Single segment, so just place the prior output
+        partfile = os.path.join(WORKDIR, "part0" + inext)
+        
+        if os.stat(WORKDIR).st_dev == os.stat(os.path.dirname(outfile)).st_dev:    # On the same filesystem, thus move
+            if args.verbose:
+                print (f"\n***** Moving  <{partfile}>  to  <{outfile}>. *****")
+            os.replace(partfile, outfile)
+        else:       # Not same filesystem, thus copy
+            if args.verbose:
+                print (f"\n***** Copying  <{partfile}>  to  <{outfile}>. *****")
+            shutil.copy2(partfile, outfile)
+            os.remove(partfile)
+
+    else:       # Multi-segment, so concatenate
+        cmd = [FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", fileslist, "-c", "copy", f"{outfile}"]
         if args.verbose:
             print ("\n***** Concatenating the parts... *****")
             print (cmd)
@@ -104,9 +125,10 @@ def main():
 
         if not args.no_cleanup:
             for segment in range(num_keep_segments):
-                os.remove(f"part{segment}{inext}")
+                partfile = os.path.join(WORKDIR, f"part{segment}{inext}")
+                os.remove(partfile)
     if not args.no_cleanup:
-        os.remove(FILESLIST)
+        os.remove(fileslist)
 
 
 def tosec(hms):
@@ -153,7 +175,7 @@ if __name__ == '__main__':
 
     try:
         if args.out is None:
-            outdir = os.path.split(args.Infile)[0]
+            outdir = os.path.realpath(os.path.split(args.Infile)[0])
         else:
             outdir = os.path.split(args.out)[0]
         testfile = os.path.join(outdir, "test.txt")
@@ -162,6 +184,15 @@ if __name__ == '__main__':
         os.remove(testfile)
     except:
         print(f"Error:  Cannot write in the output file directory <{outdir}>.")
+        sys.exit(1)
+
+    try:
+        testfile = os.path.join(WORKDIR, "test.txt")
+        with io.open(testfile, "wt", encoding='utf8') as ofile:
+            None
+        os.remove(testfile)
+    except:
+        print(f"Error:  Cannot write in the script's directory <{WORKDIR}> (used for temporary files).")
         sys.exit(1)
 
     main()
