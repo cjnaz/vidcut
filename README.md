@@ -1,6 +1,7 @@
 # vidcut
 
-Cut down a video file to just the desired segments using ffmpeg.  I use this tool to trim the fat from TV recordings from Plex's DVR feature.
+Cut down a video file to just the desired segments using ffmpeg.  I use this tool to trim the fat from TV recordings from Plex's DVR feature,
+and also trimming cell phone and drone videos.
 
 The primary switch is...
 - `--keep` to specify the Start and End times for segments you wish to _keep_.  Multiple `--keep` segments may be specified.
@@ -50,9 +51,9 @@ required arguments:
 ```
 
 ## Setup and Usage notes
-- Supported on Python3 only.  Developed on Centos 7.8 with Python 3.6.8.  Tested/supported on Windows 10 with Python 3.8.0.
+- Supported on Python3 only.  Developed on Centos 7.8 with Python 3.6.8.  Tested/supported on Windows 10 with Python 3.8.0+.
 - Depends on ffmpeg being within the user's path env var.  An alternate ffmpeg executable may be specified via the `FFMPEG` constant in the code.
-- The temporary files working directory WORKDIR may be configured in the script.  The default is the script's directory.
+- The temporary files working directory WORKDIR may be configured in the script.  The default is the system's temp directory.
 - Note that ffmpeg _copy_ is used so that the original quality is retained - no transcoding.  
 
 ## Known issues:
@@ -60,5 +61,6 @@ required arguments:
 
 ## Version history
 
+- 210225 V0.2  Moved -save to end of extension.  Bug fix for single keeps on same partition.  Default WORKDIR changed to system tempdir.
 - 200802 v0.1  Added configurable WORKDIR, Supporting Windows
 - 200801 v0.0  New
